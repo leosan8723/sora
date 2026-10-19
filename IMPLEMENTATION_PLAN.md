@@ -1032,3 +1032,30 @@ records below close Phases 4–6.
    deploy, Railway MySQL 8 runtime, HTTPS/proxy behavior in the real
    cluster, SMTP delivery. sample.html unchanged; no secrets committed;
    nothing pushed; deploy/ cPanel package untouched.
+
+## Phase F - Production 500 audit: database reachability, readiness, regression tests (2026-10-19) - DONE
+
+1. Diagnosed the reported HTTP 500 for `/svg` by reading the live service
+   (GET only) and reproducing the exact signature locally with a scratch
+   database (created, migrated, dropped afterwards): root cause = the
+   application cannot reach its database; every DB-backed request returns
+   500 (database-backed session), while `/up` and static assets stay 200.
+2. Ruled out the asset hypothesis: `/build/index.html` and the hashed Vite
+   asset both return 200 in production - the SPA build is in the image.
+3. Fixes: entrypoint configuration preflight (variable names only) +
+   database connectivity probe with actionable hints; `/api/v1/health` now
+   answers 503/`unhealthy` when the database is unreachable (truthful
+   readiness) while `/up` stays the liveness probe.
+4. Regression tests: SpaShellRoutingTest (`/`, `/svg`, deep links, nested
+   deep links, favicon-like path -> 200 SPA shell) and HealthReadinessTest
+   (200/ok with a healthy database, 503/unhealthy with an unreachable one).
+5. Verification: full backend suite 226 passed / 0 failed / 3 skipped
+   (opt-in MariaDB concurrency tests); `sh -n` on the entrypoint; local
+   before/after comparison of the production signature; `php -l` on all
+   changed files; live service re-check (still 500 - the Railway-side
+   database configuration is still missing, which is an operator action).
+6. Documentation: RAILWAY_DEPLOY.md section 4.1 (symptom -> cause table,
+   checklist, liveness vs readiness) and section 7/8 updates; ARCHITECTURE.md
+   A24.
+7. Not done by design: no production migration, no deploy, no commit/push,
+   no database data changes.

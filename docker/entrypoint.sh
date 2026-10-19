@@ -20,6 +20,50 @@ if [ -z "${APP_KEY:-}" ]; then
     echo "[sora] WARNING: APP_KEY is not set in the environment. Encrypted values (session/cookie encryption, signed URLs) will fail at runtime." >&2
 fi
 
+# --- Required configuration ------------------------------------------------
+# Only the NAMES of missing variables are printed, never their values.
+# Without DB_* the framework silently falls back to 127.0.0.1 (see
+# config/database.php) and every request that touches the database fails
+# with HTTP 500, so a missing configuration must fail fast and loudly.
+missing=""
+for var in DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD; do
+    eval "value=\${$var:-}"
+    if [ -z "$value" ]; then
+        missing="$missing $var"
+    fi
+done
+
+if [ -n "$missing" ]; then
+    echo "[sora] ERROR: missing required environment variables:$missing" >&2
+    echo "[sora] HINT: link the Railway MySQL service to this service and set DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD (references like \${{MySQL.MYSQLHOST}}), and set APP_KEY (php artisan key:generate --show)." >&2
+    exit 1
+fi
+
+# --- Database connectivity probe -------------------------------------------
+# Fails the deployment early with an actionable message instead of a silent
+# stream of HTTP 500 responses. A plain PDO connect is used on purpose:
+# artisan db:* commands query performance_schema/information_schema, which a
+# least-privilege database user may not read, and would report a false
+# alarm. No credentials are printed (PDO messages never contain a password).
+if ! php -r '
+$driver = getenv("DB_CONNECTION") ?: "mysql";
+$host = (string) getenv("DB_HOST");
+$port = (string) (getenv("DB_PORT") ?: 3306);
+$database = (string) getenv("DB_DATABASE");
+$dsn = $driver === "pgsql"
+    ? "pgsql:host=$host;port=$port;dbname=$database"
+    : "$driver:host=$host;port=$port;dbname=$database";
+try {
+    new PDO($dsn, (string) getenv("DB_USERNAME"), (string) getenv("DB_PASSWORD"), [PDO::ATTR_TIMEOUT => 5]);
+} catch (Throwable $e) {
+    fwrite(STDERR, $e->getMessage() . PHP_EOL);
+    exit(1);
+}
+' 2>/dev/null; then
+    echo "[sora] ERROR: the database is not reachable with the configured DB_* variables." >&2
+    echo "[sora] HINT: check that the MySQL service is linked to this service, that DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD match it, and that the schema has been migrated (php artisan migrate --force)." >&2
+fi
+
 # --- Apache MPM: exactly one may be loaded ---------------------------------
 # Apache aborts with "AH00534: apache2: Configuration error: More than one
 # MPM loaded" when two MPMs are active. The image build already enforces

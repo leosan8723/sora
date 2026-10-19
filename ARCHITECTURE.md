@@ -1256,3 +1256,49 @@ Decision (single service, Dockerfile-based):
   in intent to the deployed package's adapted copies; new root files never
   enter the cPanel package (which contains only htdocs + sora/); standard
   `npm run build` behavior unchanged; sample.html untouched.
+
+## 24. Production HTTP 500 audit: database reachability and truthful readiness (2026-10-19)
+
+Reported symptom (Railway, host `sora-production-4adf.up.railway.app`):
+`GET /svg` -> HTTP 500 (509 ms upstream). Investigation of the live service
+(GET only) plus a local reproduction established the causal chain:
+
+| Request | Production | Local, DB up | Local, DB down |
+|---|---|---|---|
+| `/` (SPA shell) | 500 | 200 | 500 |
+| `/svg`, `/consultants` | 500 | 200 | 500 |
+| `/api/v1/consultants` | 500 | 200 | 500 |
+| `/api/v1/health` | 200 `database: unavailable` | 200 `database: ok` | 200 `database: unavailable` (now 503) |
+| `/up` | 200 | 200 | 200 |
+| `/favicon.ico`, `/build/*` | 200 | 200 | 200 |
+
+Root cause: the application cannot reach its database in production. The
+session store uses the `database` driver (config/session.php) and the API
+queries the database, so every request that touches the database fails with
+HTTP 500, while database-independent requests (liveness, static assets) stay
+200. `/svg` is not a special route - it is simply an unknown path that
+reaches the SPA shell route, which then fails in the session layer. The SPA
+build itself is present and intact in the image (`/build/index.html` and the
+hashed asset both return 200), so "missing assets" was ruled out.
+
+Defect 1 (diagnosability): the container started without validating its
+configuration, so a missing or mis-linked database produced a silent stream
+of 500s. `docker/entrypoint.sh` now validates the required variables
+(APP_KEY, DB_*) - printing variable NAMES only, never values - and probes
+the database with `php artisan db:show`; failures abort the startup (missing
+configuration) or are logged with an actionable hint (unreachable database).
+
+Defect 2 (truthful readiness): `/api/v1/health` answered HTTP 200 even when
+the database was unreachable, so the platform and the SPA could not
+distinguish "process up" from "application usable". The endpoint now
+answers 503 with `status: unhealthy` when the database is down; the JSON
+body shape is unchanged, so existing consumers keep working. `/up` remains
+the liveness probe (a database outage must not turn into a restart loop).
+
+Defect 3 (reported path): SPA routing for unknown paths (`/svg`, deep
+links) is now locked by regression tests (SpaShellRoutingTest) so the
+reported path can never silently regress.
+
+Production data: untouched. The Railway-side cure is operational (link the
+MySQL service, set DB_* references, run the migrations once) and is
+documented in RAILWAY_DEPLOY.md section 4.1.

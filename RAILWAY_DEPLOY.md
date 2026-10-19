@@ -98,14 +98,64 @@ Build stages:
 
 Start (`docker/entrypoint.sh`):
 1. Binds Apache to `$PORT` (Railway default 8080).
-2. `RUN_MIGRATIONS=true` → `php artisan migrate --force` (see §5).
-3. `php artisan config:cache` — fresh config against the real environment
+2. Validates the required configuration (`APP_KEY`, `DB_*`); a missing
+   variable aborts the startup with the variable NAMES only (never values).
+3. Probes the database (`php artisan db:show`); an unreachable database is
+   logged as an ERROR with a hint, the container keeps serving `/up` so the
+   problem stays diagnosable.
+4. Enforces exactly one Apache MPM (`mpm_prefork`) and runs
+   `apache2ctl configtest` — an invalid configuration stops the startup
+   instead of crash-looping.
+5. `RUN_MIGRATIONS=true` → `php artisan migrate --force` (see §5).
+6. `php artisan config:cache` — fresh config against the real environment
    every boot (needed because `APP_KEY`/`DB_*`/`ADMIN_PATH` are runtime
    values).
-4. `exec apache2-foreground`.
+7. `exec apache2-foreground`.
 
 `route:cache` is deliberately NOT run: the web routes are closures and not
 serializable; config caching alone carries the performance benefit here.
+
+## 4.1 Database connectivity (the #1 production failure mode)
+
+**Symptom → cause.** If the database is not reachable, every request that
+touches it returns **HTTP 500** — that includes the whole website, because
+the session store uses the `database` driver (`config/session.php`), while
+requests that do not need the database stay 200:
+
+| Request | Database up | Database down |
+|---|---|---|
+| `/` (SPA) | 200 | **500** |
+| `/svg`, `/consultants` (any SPA path) | 200 | **500** |
+| `/api/v1/consultants` | 200 | **500** |
+| `/api/v1/health` | 200 `database: ok` | **503** `database: unavailable` |
+| `/up` (liveness) | 200 | 200 |
+| `/favicon.ico`, `/build/*` (static) | 200 | 200 |
+
+A `500` on every page plus `"database":"unavailable"` in
+`/api/v1/health` means **the app cannot reach its database** — it is not an
+asset, routing or Apache problem.
+
+**Checklist when that happens:**
+
+1. The MySQL service must exist in the same Railway project and be linked
+   to the web service.
+2. The `DB_*` variables must use Railway's reference syntax, with the
+   service name exactly as shown in the project
+   (`${{MySQL.MYSQLHOST}}` — lowercase it if the service is named `mysql`):
+   `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
+   Without them the framework silently falls back to `127.0.0.1`
+   (`config/database.php`), which nothing listens on inside the container.
+3. `APP_KEY` must be set (a separate `php artisan key:generate --show`).
+4. The schema must be migrated at least once — the `sessions` table is
+   required for every page render (see §5).
+5. The container start log states the outcome explicitly:
+   `[sora] ERROR: missing required environment variables: ...` or
+   `[sora] ERROR: the database is not reachable with the configured DB_* variables.`
+
+**Liveness vs readiness:** use `/up` as the Railway healthcheck path
+(restarts would not fix a database outage), and use `/api/v1/health` as the
+readiness signal — it answers **503** whenever the database is unavailable,
+so monitoring can distinguish "process up" from "application usable".
 
 ## 5. Database migrations — controlled procedure (never automatic)
 
@@ -145,17 +195,21 @@ exit
 
 | Path | Meaning |
 |---|---|
-| `/up` | Framework health route — **use this as the Railway healthcheck** |
-| `/api/v1/health` | Application health; NOTE: returns HTTP 200 even when the database is unreachable (`database: unavailable`) — do not use it as a database-sensitive platform healthcheck |
+| `/up` | Framework health route (liveness) — **use this as the Railway healthcheck**; it stays 200 even when the database is down, so it never turns a database outage into a restart loop |
+| `/api/v1/health` | Readiness probe: **HTTP 503** with `{"status":"unhealthy","database":"unavailable"}` when the database is unreachable, HTTP 200 with `{"status":"ok","database":"ok"}` otherwise. The JSON body shape is unchanged; the status code now tells the truth. |
 
 ## 8. Verification matrix
 
 **Locally verified**: `php -l` on all changed files; full backend PHPUnit
-suite (219 passed / 3 skipped opt-in MariaDB concurrency tests); frontend
+suite (226 passed / 3 skipped opt-in MariaDB concurrency tests); frontend
 production build with `--base=/build/` (index.html → `/build/assets/*`,
 manifest present); route list (`/`, catch-all, `/up`, `/api/v1/health`,
 admin panel); admin shell semantics (exact path only, noindex/no-store,
-probe-safe SPA responses, disabled when unset — covered in-suite).
+probe-safe SPA responses, disabled when unset — covered in-suite); SPA
+routing regression tests for `/svg` and deep links; health readiness test
+(503 on an unreachable database); end-to-end reproduction of the production
+signature (every page 500 + `database: unavailable` when the database is
+unreachable, all 200 with a healthy database).
 
 **Requires a live Railway environment (not yet executed)**: Docker image
 build success (no Docker on this workstation), real cluster HTTPS/proxy

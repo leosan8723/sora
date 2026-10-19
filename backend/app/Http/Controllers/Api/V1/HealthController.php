@@ -28,9 +28,16 @@ class HealthController extends Controller
 
         $now = now()->utc();
 
+        // Readiness semantics: a database that cannot be reached means the
+        // application cannot serve any data (the session store and every
+        // API query live in the database), so the probe answers 503 and
+        // reports the degraded state. The JSON body shape is unchanged, so
+        // existing consumers keep working.
+        $healthy = $database === 'ok';
+
         return response()->json([
             'data' => [
-                'status' => 'ok',
+                'status' => $healthy ? 'ok' : 'unhealthy',
                 'application' => config('app.name'),
                 'environment' => config('app.env'),
                 'time_utc' => $now->toIso8601String(),
@@ -39,6 +46,6 @@ class HealthController extends Controller
                 'display_timezone' => self::DISPLAY_TIMEZONE,
                 'database' => $database,
             ],
-        ]);
+        ], $healthy ? 200 : 503);
     }
 }
