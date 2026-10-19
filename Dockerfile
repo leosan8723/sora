@@ -65,12 +65,26 @@ RUN mkdir -p storage/logs storage/framework/cache/data storage/framework/session
 COPY docker/apache/sora.conf /etc/apache2/sites-available/sora.conf
 COPY docker/entrypoint.sh /usr/local/bin/sora-entrypoint
 
+# Exactly one MPM may be loaded — Apache aborts with
+# "AH00534: apache2: Configuration error: More than one MPM loaded" otherwise.
+# The base image php:8.2-apache enables mpm_prefork (mod_php requires
+# preforking), but installing packages in the layers above can reconfigure
+# the Debian apache2 package, which re-enables Debian's default MPM
+# (mpm_event) next to the already enabled mpm_prefork. Re-assert the
+# intended MPM explicitly and disable the conflicting ones; a2dismod/a2enmod
+# are idempotent, so this is safe whatever state the base image carries.
+#
+# apache2ctl configtest turns an invalid configuration into a BUILD failure
+# instead of a crash-looping container at deploy time.
 RUN chmod +x /usr/local/bin/sora-entrypoint \
     && echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
     && a2enconf servername \
     && a2dissite 000-default \
     && a2ensite sora \
-    && a2enmod rewrite headers
+    && a2enmod rewrite headers \
+    && a2dismod mpm_event mpm_worker \
+    && a2enmod mpm_prefork \
+    && apache2ctl configtest
 
 # Railway's proxy target port (overridden by the $PORT variable at runtime).
 ENV PORT=8080
