@@ -998,3 +998,37 @@ records below close Phases 4–6.
 7. Deploy replace-manifest + host-side checklist + limitations + rollback
    written to `deploy/sora-htdocs-20261019-122307/DEPLOY_README.md`;
    architecture record in `ARCHITECTURE.md` §22.
+
+## Phase E - Railway (container) deployment readiness (2026-10-19) - DONE
+
+1. Diagnosed Railpack failure: monorepo root has no build entrypoint; chosen
+   architecture = single Dockerfile-based web service (backend + build SPA +
+   admin shell, one domain).
+2. ROUTING refactor: `backend/routes/web.php` now serves `/` + one runtime
+   catch-all (admin shell via exact `hash_equals` on ADMIN_PATH inside
+   AdminPanelController; all other GET paths serve the public SPA shell —
+   probe-safe, no boot-time env dependency). `bootstrap/app.php` gained
+   `trustProxies(at: '*')` (matches the deployed cPanel package).
+3. Container files (new, root): `Dockerfile` (2-stage node:22-alpine front
+   build --base=/build/ -> php:8.2-apache, pdo_mysql+mbstring+opcache,
+   docroot backend/public, composer install --no-dev, storage:link),
+   `.dockerignore` (excludes .env*, vendor, node_modules, logs, backups,
+   deploy, sample.html, *.zip), `docker/apache/sora.conf`,
+   `docker/entrypoint.sh` (Listen=$PORT default 8080; config:cache;
+   RUN_MIGRATIONS=true gating for controlled migrations; LF line endings).
+4. Tests: full backend suite GREEN — 219 passed / 0 failed / 3 skipped
+   (skips are the opt-in real-MariaDB concurrency tests, unchanged); new
+   `AdminPanelRouteTest` semantics verified in-suite (shell only on exact
+   configured path; unknown paths = identical SPA; empty config disables
+   shell; health probe). Fixed test-level issue: SPA shell responses now
+   regular (BinaryFileResponse exposed empty body to feature tests).
+   Frontend production build verified: `npm run build -- --base=/build/`
+   -> index.html references /build/assets/*, .vite/manifest.json emitted.
+   `php -l` on changed files PASS.
+5. Docs: `RAILWAY_DEPLOY.md` (exact dashboard settings, env vars, controlled
+   migration + admin creation procedures, healthcheck, known limitations);
+   A23 above.
+6. NOT LOCAL-VERIFIED (requires Docker/Railway): image build itself, live
+   deploy, Railway MySQL 8 runtime, HTTPS/proxy behavior in the real
+   cluster, SMTP delivery. sample.html unchanged; no secrets committed;
+   nothing pushed; deploy/ cPanel package untouched.

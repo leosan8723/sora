@@ -6,45 +6,87 @@ use Tests\TestCase;
 
 class AdminPanelRouteTest extends TestCase
 {
+    private const TEST_ADMIN_PATH = 'sora-manage-test-123';
+
+    /**
+     * The private admin shell is verified at REQUEST time against the runtime
+     * ADMIN_PATH configuration (hash_equals inside AdminPanelController); the
+     * SPA catch-all route delegates to it for the exact configured path only.
+     */
     public function test_admin_shell_serves_at_configured_private_path(): void
     {
-        config()->set('sora.admin_path', 'sora-manage-test-123');
+        config()->set('sora.admin_path', self::TEST_ADMIN_PATH);
 
-        $response = $this->get('/sora-manage-test-123');
+        $response = $this->get('/'.self::TEST_ADMIN_PATH);
 
         $response->assertOk();
-        $response->assertSee('__ADMIN_BASE__ = "/sora-manage-test-123"', false);
+        $response->assertSee('__ADMIN_BASE__ = "/'.self::TEST_ADMIN_PATH.'"', false);
         $response->assertHeader('X-Robots-Tag', 'noindex, nofollow');
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
     }
 
-    public function test_admin_shell_is_404_for_other_paths(): void
+    /**
+     * Unknown GET paths serve the public SPA, indistinguishably from any
+     * other deep link — so probing for the private path reveals nothing.
+     * None of them may ever return the admin shell document.
+     */
+    public function test_unknown_paths_serve_the_spa_and_never_the_shell(): void
     {
-        config()->set('sora.admin_path', 'sora-manage-test-123');
+        config()->set('sora.admin_path', self::TEST_ADMIN_PATH);
 
-        $this->get('/sora-manage-test-124')->assertNotFound();
-        $this->get('/sora-manage-test-123x')->assertNotFound();
-        $this->get('/admin')->assertNotFound();
-        $this->get('/sora-manage-test-123/extra')->assertNotFound();
+        foreach ([
+            self::TEST_ADMIN_PATH.'1',
+            self::TEST_ADMIN_PATH.'-x',
+            self::TEST_ADMIN_PATH.'-longer-variant',
+            self::TEST_ADMIN_PATH.'/extra',
+            'admin',
+            'consultants',
+            'contact-us',
+        ] as $path) {
+            $response = $this->get('/'.$path);
+
+            $response->assertOk();
+            $this->assertStringNotContainsString(
+                '__ADMIN_BASE__',
+                (string) $response->getContent(),
+                "Route '/{$path}' must not serve the admin shell."
+            );
+        }
     }
 
-    public function test_admin_shell_fails_safe_when_not_configured(): void
+    /**
+     * An empty/missing ADMIN_PATH disables the shell entirely: every GET
+     * path — including the would-be private path — serves the public SPA and
+     * never the shell document (all admin API endpoints remain
+     * authentication + role protected regardless).
+     */
+    public function test_shell_is_disabled_when_not_configured(): void
     {
-        config()->set('sora.admin_path', null);
+        foreach ([null, ''] as $unconfigured) {
+            config()->set('sora.admin_path', $unconfigured);
 
-        $this->get('/sora-manage-test-123')->assertNotFound();
-        $this->get('/admin')->assertNotFound();
+            $response = $this->get('/'.self::TEST_ADMIN_PATH);
 
-        config()->set('sora.admin_path', '');
-
-        $this->get('/sora-manage-test-123')->assertNotFound();
+            $response->assertOk();
+            $this->assertStringNotContainsString('__ADMIN_BASE__', (string) $response->getContent());
+        }
     }
 
-    public function test_configured_path_with_unexpected_length_is_404(): void
+    /**
+     * The shell is reachable only for the exact configured value (length is
+     * irrelevant — the value itself is the security); lookalikes of admin-
+     * shell-like shape are ordinary SPA deep links.
+     */
+    public function test_only_exact_configured_value_serves_the_shell(): void
     {
-        // The route constraint rejects segments shorter than 8 characters.
         config()->set('sora.admin_path', 'short12');
 
-        $this->get('/short12')->assertNotFound();
+        $exact = $this->get('/short12');
+        $exact->assertOk();
+        $exact->assertSee('__ADMIN_BASE__ = "/short12"', false);
+
+        $lookalike = $this->get('/short13');
+        $lookalike->assertOk();
+        $this->assertStringNotContainsString('__ADMIN_BASE__', (string) $lookalike->getContent());
     }
 }

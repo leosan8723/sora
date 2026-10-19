@@ -19,6 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Every production target terminates HTTPS behind a proxy/load
+        // balancer (shared hosting control panel, Railway). Trust forwarded
+        // headers so generated URLs, redirects and secure cookies use https.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
         ]);

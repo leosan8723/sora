@@ -1200,3 +1200,59 @@ no on-host CLI/on-host Composer needed; host-side re-check list in the
 package `DEPLOY_README.md`. Rollback = don't upload (original project
 byte-identical to backup; XAMPP Apache config restored after temporary
 testing).
+
+## 23. Railway (container) deployment: single-service Architecture Decision (2026-10-19)
+
+Goal: make the repository deploy as ONE Railway web service (Laravel API +
+React SPA + private admin shell on a single origin) with reproducible builds
+and no fragile detection. The shared-hosting/cPanel deployment (A22) is
+preserved exactly: all additions are new files at the repository root
+(Dockerfile, .dockerignore, docker/), documented in `RAILWAY_DEPLOY.md`.
+
+Decision (single service, Dockerfile-based):
+- **Container**: `php:8.2-apache` + `pdo_mysql`, `mbstring`, `opcache`;
+  docroot = `backend/public`, application sources stay OUTSIDE the docroot
+  (no `.env`, `artisan`, config, or storage exposure). SHA-pinned extensions:
+  pdo_mysql (Railway MySQL) and mbstring with libonig; no `ext-gd` is
+  required (verified: no composer package requires it).
+- **Frontend build inside the image** (multi-stage node:22-alpine):
+  `npm ci && npm run build -- --base=/build/` emitting
+  `backend/public/build` — the exact artifact contract validated for cPanel
+  (shell document references `/build/assets/*`, Vite manifest at
+  `backend/public/build/.vite/manifest.json`).
+- **Routing** (now in the repository, previously deploy-package-only):
+  `routes/web.php` serves `/` and a single catch-all `/{panel}` GET route.
+  The catch-all serves the private admin shell when the path equals the
+  runtime `ADMIN_PATH` exactly (`hash_equals` inside AdminPanelController,
+  which remains the authoritative check) and the public SPA shell for every
+  other GET path — unknown paths therefore receive the SAME public SPA
+  response, so probing the private path reveals nothing (improvement over
+  the boot-time-excluded regex: no environment-order dependency in route
+  compilation, and no 404 leakage shape). `route:cache` is NOT used (the
+  closure is not serializable); `config:cache` runs at container start so
+  config reflects the real runtime env.
+- **Migrations**: never automatic. Controlled procedure = set the service
+  variable `RUN_MIGRATIONS=true` for one deploy/validation, then remove it
+  (docker/entrypoint.sh honors it). Railpack's auto `migrate --force` on
+  every start was rejected: a DB outage at container boot would crash-loop
+  and multiple replicas could race on `migrations`.
+- **Proxy/HTTPS**: `$middleware->trustProxies(at: '*')` added to the repo
+  `bootstrap/app.php` (identical to the already-deployed cPanel package
+  version — no behavior change on cPanel). Session cookies: set
+  `SESSION_SECURE_COOKIE=true` in the Railway environment.
+- **Database**: Railway MySQL 8.x template. All 22 migrations reviewed:
+  standard Laravel schema API + one portable backfill (`DB::raw` correlated
+  UPDATE) + enum/foreignId/unique-string columns — MySQL 8-compatible;
+  `utf8mb4_unicode_ci` OK. No automatic data migration: schema is created
+  empty by the controlled migration run; existing MariaDB data, if ever
+  migrated, requires an explicit operator-approved dump/import.
+- **Initial admin**: `railway ssh` (supported by the Railway CLI) then
+  `php artisan admin:create --name= --email= --password=` (refuses if any
+  admin exists; no credentials committed anywhere).
+- **Health**: `/up` (framework) and `/api/v1/health`. Note: `/api/v1/health`
+  always returns HTTP 200 (records `database: unavailable` instead of
+  failing) — use `/up` as the Railway healthcheck path.
+- **cPanel compatibility**: repo route/bootstrap changes are byte-equivalent
+  in intent to the deployed package's adapted copies; new root files never
+  enter the cPanel package (which contains only htdocs + sora/); standard
+  `npm run build` behavior unchanged; sample.html untouched.
