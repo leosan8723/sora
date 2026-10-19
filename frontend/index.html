@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fffafc" />
+    <meta name="description" content="???????? ??? ???????? ???????? ???????? ???????? ?????????? ????????????" />
+    <title>???????? | ???????? ?????????? ????????????</title>
+    <script>
+      // Apply the persisted theme and locale before first paint to avoid a flash.
+      try {
+        var stored = window.localStorage.getItem('consultation.theme')
+        var system = window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+        document.documentElement.dataset.theme =
+          stored === 'dark' || stored === 'light' ? stored : system
+      } catch (error) {
+        document.documentElement.dataset.theme = 'light'
+      }
+      try {
+        var locale = window.localStorage.getItem('consultation.locale')
+        locale = locale === 'fa' || locale === 'en'
+          ? locale
+          : (navigator.language && navigator.language.toLowerCase().indexOf('en') === 0
+              ? 'en'
+              : 'fa')
+        document.documentElement.lang = locale
+        document.documentElement.dir = locale === 'fa' ? 'rtl' : 'ltr'
+      } catch (error) {
+        document.documentElement.lang = 'fa'
+        document.documentElement.dir = 'rtl'
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

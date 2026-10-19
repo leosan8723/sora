@@ -1,0 +1,250 @@
+@import 'tailwindcss';
+
+/*
+ * Sora theme system
+ * ─────────────────
+ * Utilities are generated from semantic tokens (bg-surface, text-ink-70, …)
+ * that resolve through `var(--t-*)` indirection. Concrete values live in
+ * `:root` (light — white canvas with mandated rose `#F8BBD0` bands and
+ * light-blue `#B3E5FC` highlights; the interactive rose accent is the
+ * deepened, contrast-safe tone of the same hue) and `[data-theme='dark']`
+ * (rose-black with the mandated pink as the accent).
+ * `@theme inline` keeps the var reference inside generated utilities, so
+ * swapping the data-theme attribute restyles every page.
+ *
+ * Type pairing: an editorial serif for display (Playfair Display for Latin,
+ * Noto Naskh Arabic for Persian — script fallback picks the right one) over
+ * a clean sans for body (Inter / Vazirmatn).
+ */
+
+@theme inline {
+  --color-canvas: var(--t-canvas);
+  --color-deep: var(--t-deep);
+  --color-surface: var(--t-surface);
+  --color-surface-strong: var(--t-surface-strong);
+  --color-surface-soft: var(--t-surface-soft);
+  --color-tint: var(--t-tint);
+  --color-hairline: var(--t-hairline);
+  --color-hairline-soft: var(--t-hairline-soft);
+  --color-ink: var(--t-ink);
+  --color-ink-80: var(--t-ink-80);
+  --color-ink-70: var(--t-ink-70);
+  --color-ink-50: var(--t-ink-50);
+  --color-ink-30: var(--t-ink-30);
+  --color-accent: var(--t-accent);
+  --color-accent-strong: var(--t-accent-strong);
+  --color-accent-deep: var(--t-accent-deep);
+  --color-accent-wash: var(--t-accent-wash);
+  --color-on-accent: var(--t-on-accent);
+  --color-danger: var(--t-danger);
+  --color-danger-wash: var(--t-danger-wash);
+  --color-success: var(--t-success);
+  --color-success-wash: var(--t-success-wash);
+
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-card: 16px;
+  --radius-hero: 24px;
+
+  --container-page: 1200px;
+
+  --font-sans: 'Inter', 'Vazirmatn Variable', 'Vazirmatn', system-ui, sans-serif;
+  --font-display: 'Playfair Display', 'Noto Naskh Arabic', 'Vazirmatn Variable', serif;
+}
+
+:root {
+  /* Light — white canvas, rose circles from #F8BBD0 (mission pink) and
+   * #B3E5FC (mission light-blue) with a deep-rose interactive accent for
+   * WCAG-safe text on white. */
+  --t-canvas: #fffafc;
+  --t-deep: #f8bbd0;
+  --t-surface: #ffffff;
+  --t-surface-strong: #ffffff;
+  --t-surface-soft: #f2f8fc;
+  --t-tint: #b3e5fc;
+  --t-hairline: rgba(49, 27, 37, 0.14);
+  --t-hairline-soft: rgba(49, 27, 37, 0.08);
+  --t-ink: #311b25;
+  --t-ink-80: rgba(49, 27, 37, 0.84);
+  --t-ink-70: rgba(49, 27, 37, 0.7);
+  --t-ink-50: rgba(49, 27, 37, 0.54);
+  --t-ink-30: rgba(49, 27, 37, 0.34);
+  --t-accent: #c2185b;
+  --t-accent-strong: #a81750;
+  --t-accent-deep: #8b1342;
+  --t-accent-wash: rgba(248, 187, 208, 0.4);
+  --t-on-accent: #ffffff;
+  --t-danger: #b3261e;
+  --t-danger-wash: rgba(179, 38, 30, 0.08);
+  --t-success: #2e6d4f;
+  --t-success-wash: rgba(46, 109, 79, 0.1);
+  --t-glass: rgba(255, 250, 252, 0.86);
+  --t-shimmer: rgba(49, 27, 37, 0.05);
+  --shadow-card: 0 1px 2px rgba(93, 35, 56, 0.06), 0 8px 28px rgba(93, 35, 56, 0.08);
+  --shadow-float: 0 2px 6px rgba(93, 35, 56, 0.08), 0 16px 44px rgba(93, 35, 56, 0.12);
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  /* Dark — warm rose-black canvas; the mandated pink #F8BBD0 becomes a
+   * high-contrast accent and #B3E5FC survives as the selection/tint hue. */
+  --t-canvas: #171014;
+  --t-deep: #0f0a0d;
+  --t-surface: rgba(255, 255, 255, 0.06);
+  --t-surface-strong: rgba(255, 255, 255, 0.1);
+  --t-surface-soft: rgba(255, 255, 255, 0.04);
+  --t-tint: #22323d;
+  --t-hairline: rgba(248, 236, 241, 0.14);
+  --t-hairline-soft: rgba(248, 236, 241, 0.08);
+  --t-ink: #f8ecf1;
+  --t-ink-80: rgba(248, 236, 241, 0.82);
+  --t-ink-70: rgba(248, 236, 241, 0.7);
+  --t-ink-50: rgba(248, 236, 241, 0.52);
+  --t-ink-30: rgba(248, 236, 241, 0.32);
+  --t-accent: #f8bbd0;
+  --t-accent-strong: #fbd1de;
+  --t-accent-deep: #e9a3bd;
+  --t-accent-wash: rgba(248, 187, 208, 0.12);
+  --t-on-accent: #31131d;
+  --t-danger: #e57373;
+  --t-danger-wash: rgba(229, 115, 115, 0.1);
+  --t-success: #8fd4a8;
+  --t-success-wash: rgba(143, 212, 168, 0.12);
+  --t-glass: rgba(23, 16, 20, 0.8);
+  --t-shimmer: rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.32);
+  --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.36), 0 16px 44px rgba(0, 0, 0, 0.44);
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /*
+     * The hero bleeds to the viewport edge with `50vw` math, which is a few
+     * pixels wider than the client box once a vertical scrollbar exists.
+     * Clipping at the root keeps that bleed without allowing sideways scroll.
+     */
+    overflow-x: clip;
+    background-color: var(--t-canvas);
+  }
+
+  body {
+    min-height: 100svh;
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-ink-80);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.7;
+    /* Safety net: a stray full-bleed block can never create sideways scroll. */
+    overflow-x: clip;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    line-height: 1.25;
+    font-weight: 500;
+    /* Persian script is cursive; Latin tracking rules hurt it. */
+    letter-spacing: normal;
+    margin: 0;
+  }
+
+  h1 {
+    font-size: clamp(2.25rem, 1.6rem + 2.4vw, 3.5rem);
+  }
+
+  h2 {
+    font-size: clamp(1.75rem, 1.4rem + 1.3vw, 2.5rem);
+  }
+
+  h3 {
+    font-size: 1.375rem;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--t-accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--t-tint);
+    color: var(--color-ink);
+  }
+
+  [data-theme='dark'] ::selection {
+    background-color: var(--t-accent-wash);
+    color: var(--color-ink);
+  }
+
+  ::placeholder {
+    color: var(--t-ink-30);
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    accent-color: var(--t-accent);
+  }
+}
+
+@layer utilities {
+  /* Photo treatment from the reference: images melt into the page. */
+  .fade-bottom {
+    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+  }
+
+  .fade-top {
+    -webkit-mask-image: linear-gradient(0deg, #000 55%, transparent 100%);
+    mask-image: linear-gradient(0deg, #000 55%, transparent 100%);
+  }
+
+  .glass {
+    background-color: var(--t-glass);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /*
+   * Escape the page container's horizontal padding without hard-coding it.
+   * Percentage margins resolve against the container's content box, so
+   * `calc(50% - 50vw)` pulls both inline edges to the viewport, in LTR and RTL
+   * alike — and it does not add the scrollbar width the way `100vw` does.
+   */
+  .full-bleed {
+    margin-inline: calc(50% - 50vw);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
