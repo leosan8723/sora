@@ -117,7 +117,24 @@ serializable; config caching alone carries the performance benefit here.
 
 ## 4.1 Database connectivity (the #1 production failure mode)
 
-**Symptom → cause.** If the database is not reachable, every request that
+### 4.1.0 Check the service settings before anything else
+
+Two service settings silently override the image and are the most common
+cause of "the container starts but nothing is served":
+
+| Setting | Where | Why it breaks the deployment |
+|---|---|---|
+| **Custom Start Command** | Service → Settings → Deploy | It **replaces the image ENTRYPOINT**. If it is set to anything else (for example `curl -fsSL https://opencode.ai/v2/install \| bash`, which Railway's agent setup writes), the container never runs Apache/Laravel: the build still succeeds, the container exits, and Railway answers **HTTP 502 "Application failed to respond"** while the logs contain only the injected command's output — none of the `[sora] …` lines from `docker/entrypoint.sh`. |
+| **Root Directory / Dockerfile path** | Service → Settings → Build | Must stay empty (the `Dockerfile` is at the repository root) and the builder must remain `DOCKERFILE`. |
+
+How to recognise it: `railway logs` shows the output of a foreign command and
+no `[sora] …` lines, `railway service status` reports `STOPPED`, and the
+public domain answers 502 after ~15 s.
+
+Fix: clear the custom Start Command (leave it empty) so the image
+`ENTRYPOINT` (`docker/entrypoint.sh`) runs, then deploy again.
+
+### 4.1.1 Symptom → cause If the database is not reachable, every request that
 touches it returns **HTTP 500** — that includes the whole website, because
 the session store uses the `database` driver (`config/session.php`), while
 requests that do not need the database stay 200:
@@ -151,6 +168,33 @@ asset, routing or Apache problem.
 5. The container start log states the outcome explicitly:
    `[sora] ERROR: missing required environment variables: ...` or
    `[sora] ERROR: the database is not reachable with the configured DB_* variables.`
+
+**Variables actually used by this deployment (service `sora`, environment
+`production`):**
+
+```
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=<php artisan key:generate --show>
+APP_URL=https://sora-production-4adf.up.railway.app
+FRONTEND_URL=https://sora-production-4adf.up.railway.app
+ADMIN_PATH=<32 random characters>
+DB_CONNECTION=mysql
+DB_HOST=${{MySQL.MYSQLHOST}}
+DB_PORT=${{MySQL.MYSQLPORT}}
+DB_DATABASE=${{MySQL.MYSQLDATABASE}}
+DB_USERNAME=${{MySQL.MYSQLUSER}}
+DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}
+SESSION_DRIVER=database
+SESSION_SECURE_COOKIE=true
+CACHE_STORE=database
+QUEUE_CONNECTION=database
+LOG_CHANNEL=stderr
+```
+
+> Note: the Railway MySQL template exposes `MYSQLUSER=root`. That works, but
+> a dedicated application user with least-privilege grants is the hardened
+> variant (the app user only needs DML on its own schema).
 
 **Liveness vs readiness:** use `/up` as the Railway healthcheck path
 (restarts would not fix a database outage), and use `/api/v1/health` as the

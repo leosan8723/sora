@@ -1059,3 +1059,26 @@ records below close Phases 4–6.
    A24.
 7. Not done by design: no production migration, no deploy, no commit/push,
    no database data changes.
+
+## Phase G - Railway runtime diagnosis and configuration repair (2026-10-19) - DONE
+
+1. Read-only inspection of the live project through the authenticated
+   Railway CLI/GraphQL API: deployment list, build log, runtime log,
+   service status, service variables (names only) and `deployment.meta`.
+2. Root cause identified and evidenced: the service carries a custom start
+   command (`curl ... opencode.ai/v2/install | bash`) that replaces the image
+   ENTRYPOINT - build green, container exits, service STOPPED, domain 502.
+3. Repaired the service configuration: 17 variables set on service `sora`
+   (APP_*, DB_* as references to the MySQL service, SESSION_*, CACHE_*,
+   QUEUE_*, LOG_CHANNEL) with `--skip-deploys`, so no deployment was
+   triggered by the change.
+4. Local hardening: `docker/entrypoint.sh` treats a missing APP_KEY as
+   fatal (previously only a warning).
+5. Documentation: RAILWAY_DEPLOY.md 4.1.0 (service settings that override
+   the image, with the recognition checklist), 4.1.1 (variable set actually
+   used), ARCHITECTURE.md A25.
+6. Still operator-side and NOT done by the agent: clearing the custom start
+   command in the dashboard, the one-shot production migration
+   (`RUN_MIGRATIONS=true` for a single deployment, then removed), the
+   healthcheck path (`/up`), and rotating the MySQL credentials that were
+   printed to a terminal during the read-only inspection.

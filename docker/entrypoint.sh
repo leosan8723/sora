@@ -16,17 +16,15 @@ PORT="${PORT:-8080}"
 sed -ri "s/^Listen[[:space:]]+80\$/Listen ${PORT}/" /etc/apache2/ports.conf
 echo "[sora] Apache listen configuration: $(grep -E '^Listen' /etc/apache2/ports.conf | tr '\n' ' ')"
 
-if [ -z "${APP_KEY:-}" ]; then
-    echo "[sora] WARNING: APP_KEY is not set in the environment. Encrypted values (session/cookie encryption, signed URLs) will fail at runtime." >&2
-fi
-
 # --- Required configuration ------------------------------------------------
 # Only the NAMES of missing variables are printed, never their values.
 # Without DB_* the framework silently falls back to 127.0.0.1 (see
 # config/database.php) and every request that touches the database fails
 # with HTTP 500, so a missing configuration must fail fast and loudly.
+# APP_KEY is required as well: without it session/cookie encryption and
+# signed URLs break silently at runtime.
 missing=""
-for var in DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD; do
+for var in APP_KEY DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD; do
     eval "value=\${$var:-}"
     if [ -z "$value" ]; then
         missing="$missing $var"

@@ -1302,3 +1302,44 @@ reported path can never silently regress.
 Production data: untouched. The Railway-side cure is operational (link the
 MySQL service, set DB_* references, run the migrations once) and is
 documented in RAILWAY_DEPLOY.md section 4.1.
+
+## 25. Railway runtime diagnosis: service settings override the image (2026-10-19)
+
+The deployment moved from "HTTP 500 on every page" to "HTTP 502, nothing
+served" after the database variables and APP_KEY were configured. Using the
+authenticated Railway CLI and GraphQL API (read-only), the live state was
+inspected:
+
+| Evidence | Finding |
+|---|---|
+| `railway deployment list` | latest deployment SUCCESS (the image built correctly) |
+| `railway logs -b` (build) | our Dockerfile executed end to end (php:8.2-apache, composer:2, node:22-alpine, the MPM/configtest layer) |
+| `railway logs` (runtime) | only `Starting Container` plus the output of a foreign installer; **no `[sora] …` line at all** - the image entrypoint never ran |
+| `railway service status` | `STOPPED` (the container exited; `restartPolicy ON_FAILURE`, 10 retries) |
+| live domain | HTTP 502 "Application failed to respond" after ~15.6 s on every path |
+| `deployment.meta.serviceManifest` | `build.builder = DOCKERFILE`, `deploy.startCommand = "curl -fsSL https://opencode.ai/v2/install \| bash"` |
+
+Root cause: a **custom Start Command** on the service replaces the image
+ENTRYPOINT, so the container installs and runs the OpenCode agent instead
+of Apache + Laravel. The build is therefore green while nothing is ever
+served. The service settings of a Docker-image deployment must leave the
+start command empty.
+
+Second confirmed gap: the web service carried only `APP_KEY` and the
+Railway-provided variables - **no `DB_*` at all** - so even with a correct
+entrypoint the database could not be reached (the framework then falls back
+to `127.0.0.1`, see `config/database.php`). The 17 required variables are
+now set on the service (DB_* as Railway references to the MySQL service).
+
+Third gap: the schema was never migrated on Railway, so the `sessions` table
+does not exist - the page render would still fail once the database is
+reachable. The migration stays a controlled, one-shot action
+(`RUN_MIGRATIONS=true` for exactly one deployment, then removed).
+
+The start command is not writable through the public GraphQL API
+(`ServiceUpdateInput` only exposes `icon` and `name`), so clearing it is a
+one-step manual action in the Railway dashboard.
+
+Hardening: `docker/entrypoint.sh` now treats a missing `APP_KEY` as fatal
+next to the missing `DB_*` variables (it was only a warning, and a missing
+key breaks session encryption silently at runtime).
