@@ -87,7 +87,10 @@ Build stages:
    `backend/public/build` (same artifact contract as the cPanel package:
    shell document references `/build/assets/*`, manifest at
    `build/.vite/manifest.json`).
-2. `php:8.2-apache` — `pdo_mysql`, `mbstring`, `opcache` installed; composer
+2. `php:8.2-apache` — `pdo_mysql`, `mbstring`, `opcache` and `zip` installed
+   (`zip` is required so Composer can unpack `--prefer-dist` archives; the
+   `unzip` binary is present as a fallback extractor, no
+   `--ignore-platform-reqs` is used); composer
    (`composer:2` stage) → `composer install --no-dev --prefer-dist
    --optimize-autoloader`; `php artisan storage:link`;
    `docker/apache/sora.conf` = docroot `backend/public` + AllowOverride All;

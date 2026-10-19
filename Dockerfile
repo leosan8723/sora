@@ -32,8 +32,12 @@ RUN npm ci --no-audit --no-fund && npm run build -- --base=/build/
 FROM php:8.2-apache
 
 # Laravel requires pdo_mysql (Railway MySQL), mbstring and opcache.
-RUN apt-get update && apt-get install -y --no-install-recommends libonig-dev \
-    && docker-php-ext-install pdo_mysql mbstring opcache \
+# Composer additionally needs the zip extension (ZipArchive) to unpack the
+# --prefer-dist archives; unzip is installed as a fallback extractor. No
+# ext-gd is required (no package in composer.lock requires it).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libonig-dev libzip-dev unzip \
+    && docker-php-ext-install pdo_mysql mbstring opcache zip \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -44,6 +48,10 @@ COPY --from=frontend /repo/backend/public/build/ /var/www/sora/public/build/
 
 WORKDIR /var/www/sora
 
+# Production dependencies only. Composer plugins: none are required for this
+# dependency set (the allow-plugins entries in composer.json target dev-only
+# tooling that is excluded by --no-dev), so no --no-plugins flag and no
+# superuser override are needed to run Composer as root in the image.
 RUN mkdir -p storage/logs storage/framework/cache/data storage/framework/sessions \
         storage/framework/views bootstrap/cache \
     && composer install --no-dev --prefer-dist --no-interaction --no-progress \
